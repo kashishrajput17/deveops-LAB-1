@@ -1,0 +1,53 @@
+name: ML CI/CD Pipeline
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python lint.py
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install scikit-learn pyyaml
+      - run: python -m unittest discover -v tests
+
+  train-and-gate:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install scikit-learn pyyaml
+      - run: python train.py configs/production.yaml 0.95   # fail build if accuracy < 95%
+
+  build:
+    needs: train-and-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: tar czf model-package.tar.gz train.py configs
+      - uses: actions/upload-artifact@v4
+        with: { name: model-package, path: model-package.tar.gz }
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: model-package }
+      - run: echo "Deploy step (staging/production target goes here)"
